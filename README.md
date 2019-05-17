@@ -10,12 +10,12 @@ En el cas de Catalunya, les 3658 candidatures proclamades a les 992 circumscripc
 
 ## Metodologia
 
-L'extracció de textos dels PDFs així com l'anàlisi i el creuament de dades es va fer amb R. Podeu consultar el Notebook [aquí]().
+L'extracció de textos dels PDFs així com l'anàlisi i el creuament de dades es va fer amb R. Podeu consultar el Notebook [aquí](https://github.com/vicoliveres/capsdellista_eleccionslocals/blob/master/capsdellista_eleccionsmunicipals.Rmd).
 
 ## Visualització
 
 Per la visualització, vam crear 3 "waffle charts" amb D3.js. Els codis són els següents:
 
-[Caps de llista als municipis catalans](https://github.com/vicoliveres/capsdellistatotal/tree/master/docs)
-[Caps de llista per partit](https://github.com/vicoliveres/capsdellistapartits/tree/master/docs)
-[Caps de llista per mida del municipi](https://github.com/vicoliveres/capsdellistamides/tree/master/docs)
+* [Caps de llista als municipis catalans](https://github.com/vicoliveres/capsdellistatotal/tree/master/docs)
+* [Caps de llista per partit](https://github.com/vicoliveres/capsdellistapartits/tree/master/docs)
+* [Caps de llista per mida del municipi](https://github.com/vicoliveres/capsdellistamides/tree/master/docs)
