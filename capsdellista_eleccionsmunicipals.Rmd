@@ -1,0 +1,369 @@
+---
+title: "Caps de llista a les eleccions municipals per gènere"
+output:
+  html_document:
+    df_print: paged
+---
+
+### Extracció de dades dels PDFs
+
+Com que, tot i que molts PDFs compartien les mateixes característiques, però no tots eren iguals, vai optar per descarregar-los un per un (els 30) i utilitzar el mateix codi per l'scrapping fent petites modificacions per adaptar-lo.
+
+Scrapping del PDF - exemple amb la [Junta Electoral de Zona d'Arenys de Mar](https://bop.diba.cat/scripts/ftpisa.aspx?fnew?bop2019&04/062019000230.pdf&1):
+
+```{r}
+library(pdftools)
+library(purrr)
+library(stringr)
+```
+
+```{r}
+## Posar tot el text del PDF en un objecte
+pdfarenys <- pdf_text("arenys.pdf")
+
+## Posar totes les cel·les seguide en un sol "string"
+textarenys <- ""
+for (i in pdfarenys) {
+  textarenys <- paste(textarenys, i, sep=" ")
+}
+
+## Separar el text cada vegada que apareix una nova circumscripció electoral (un nou municipi)
+
+#### Tenir en compte si el PDF utilitza "Circunscripción electoral", "CIRCUNSCRIPCIÓN ELECTORAL", "CIRCUMSCRIPCIÓ ELECTORAL" o altres variants
+zonaarenys <- str_split(textarenys, "Circunscripción electoral")
+zonaarenys <- zonaarenys[[1]]
+
+## Separar el text de cada circumscripció electoral cada vegada que apareix una nova candidatura. D'aquesta manera crear una llista de circumscripcions amb un vector de candidatures a dins de cadascuna
+
+#### Tenir en compte si el PDF utilitza "Candidatura núm", "CANDIDATURA NÚM", "CANDIDATURA N" o altres variants
+zonaarenys <- map(1:length(zonaarenys), function(i) {
+  strsplit(zonaarenys[[i]], "Candidatura núm")
+})
+
+## Separar el text a cada salt de línia. D'aquesta manera, dins de cada candidatura es crea un vector amb els noms i posicions.
+zonaarenys <- map(1:length(zonaarenys), function(i) {
+  strsplit(zonaarenys[[i]][[1]], "\n")
+})
+```
+
+Un cop els tenim tots, ajuntem les zones per crear una sola llista (sense el primer element, que sempre és un text introductori i no cap municipi).
+
+Exemple amb les zones de la província de Barcelona:
+
+```{r}
+zonesbcn <- c(zonaarenys[-1], zonabarcelona[-1], zonaberga[-1], zonagranollers[-1], zonahospitalet[-1], zonaigualada[-1], zonamanresa[-1], zonamataro[-1], zonasabadell[-1], zonasantfeliu[-1], zonaterrassa[-1], zonavic[-1], zonavilafranca[-1], zonavilanova[-1])
+```
+
+A partir de les llistes, crear un dataframe amb nom del municipi, nom de la candidatura i nom del cap de llista.
+
+```{r}
+municipi <- c()
+candidatura <- c()
+capdellista <- c()
+
+## Per cada municipi
+for (i in 1:length(zonesbcn)) {
+  
+  ## Per cada candidatura
+  for (j in 2:length(zonesbcn[[i]])) {
+    
+    ## Extreu el primer element de cada municipi (nom)
+    xmunicipi <- zonesbcn[[i]][[1]][1]
+    
+    ## Extreu el primer element de cada candidatura (nom) de cada municipi
+    xcandidatura <- zonesbcn[[i]][[j]][1]
+    
+    ## Extreu tota la llista de candidats de cada candidatura de cada municipi
+    xcapdellista <- zonesbcn[[i]][[j]]
+    
+    ## Tria la primera cela que comenci per "1." ja que serà la del cap de llista
+    capdellistanet <- xcapdellista[grep("^1\\. *", xcapdellista)[1]]
+    
+    ## afegeix cada element com un nou element de cada vector
+    municipi <- c(municipi, xmunicipi)
+    candidatura <- c(candidatura, xcandidatura)
+    capdellista <- c(capdellista, capdellistanet)
+    
+  }
+}
+
+## Ajunta els vectors en un dataframe
+cdllbcn <- data.frame(municipi, candidatura, capdellista)
+```
+
+Cal anar amb compte ja que, per exemple a la Província de Lleida, els noms dels municipis estan a la línia de sobre del text "Candidatura núm". Per això, amb el codi amb el qual els he scrappejat, el nom de la candidatura em queda emmagatzemat com a darrer element de la candidatura anterior. 
+
+Abans de crear el dataframe, hem de modificar la llista:
+
+```{r}
+for (i in 1:length(zoneslld)) {
+  
+  for (j in 2:(length(zoneslld[[i]]))) {
+    
+    ## Agafar l'últim element de la llista anterior i copiar-lo al primer lloc de cada llista de candidats (no solaparem perquè aquell lloc sempre és una línia buida)
+    zoneslld[[i]][[j]][1] <- zoneslld[[i]][[j-1]][length(zoneslld[[i]][[j-1]])-1]
+    
+  }
+}
+```
+
+Però no tot es pot automatitzar al 100%. 
+
+En el cas de la província de lleida, moltes pàgines tenen dues columnes, cosa que barreja el text que s'emmagatema per línies. L'opció que m'ha fet perdre menys temps ha sigut revisar aquests casos de manera externa i entrar els noms de les candidatures i candidats de manera manual.
+
+També ha sigut manual el cas del Vendrell, ja que no aareixia el text "Circumscripció electoral" davant del no de cada municipi.
+
+### Neteja de dades
+
+Un cop tenim totes les dades en un sol dataframe, toca netejar-les. Al principi les columnes són "municipi", "candidatura" i "capdellista".
+
+#### Neteja caps de llista:
+
+```{r}
+## Eliminar els números de davant dels noms
+
+cdllnet$capdellistanet <- sub("01. ", "", cdllnet$capdellista)
+cdllnet$capdellistanet <- sub("1. ", "", cdllnet$capdellistanet)
+cdllnet$capdellistanet <- sub("1 ", "", cdllnet$capdellistanet)
+```
+
+Unificar els noms amb el format Xxxx (capitalitzats):
+
+```{r}
+## Convertir-ho tot a minúscula
+cdllnet$capdellistanet <- tolower(cdllnet$capdellistanet)
+
+capdellistanet <- c()
+
+## Funció per capitalitzar la primera lletra de cada paraula
+.simpleCap <- function(x) {
+    s <- strsplit(x, " ")[[1]]
+    paste(toupper(substring(s, 1, 1)), substring(s, 2),
+          sep = "", collapse = " ")
+}
+
+for (i in 1:length(cdllnet$capdellistanet)) {
+  
+  xcapdellistanet <- .simpleCap(cdllnet$capdellistanet[i])
+  
+  capdellistanet <- c(capdellistanet, xcapdellistanet)
+}
+
+cdllnet$capdellistanet <- capdellistanet
+```
+
+```{r}
+## Eliminar els elements de paginació que es colen al mig del text
+cdllnet$candidatura <- gsub("Pàg\\. .*", "", cdllnet$candidatura)
+cdllnet$capdellista <- gsub("Pàg\\. .*", "", cdllnet$capdellista)
+cdllnet$capdellistanet <- gsub("Pàg\\. .*", "", cdllnet$capdellistanet)
+```
+
+##### Neteja candidatures
+
+```{r}
+##Eliminar els dos punts
+cdllnet$candidaturanet <- sub(".*: ", "", cdllnet$candidatura)
+cdllnet$candidaturanet <- sub(".*:", "", cdllnet$candidaturanet)
+```
+
+Capitalitzar primera lletra i la resta en minúscules:
+
+```{r}
+cdllnet$candidaturanet <- tolower(cdllnet$candidaturanet)
+
+candidaturanet <- c()
+
+.simpleCap <- function(x) {
+    s <- strsplit(x, " ")[[1]]
+    paste(toupper(substring(s, 1, 1)), substring(s, 2),
+          sep = "", collapse = " ")
+}
+
+for (i in 1:length(cdllnet$candidaturanet)) {
+  
+  xcandidaturanet <- .simpleCap(cdllnet$candidaturanet[i])
+  
+  candidaturanet <- c(candidaturanet, xcandidaturanet)
+}
+
+cdllnet$candidaturanet <- candidaturanet
+```
+
+```{r}
+cdllnet$candidatura <- gsub("Pàg\\. .*", "", cdllnet$candidatura)
+cdllnet$candidatura <- gsub("Pàg\\. .*", "", cdllnet$candidatura)
+cdllnet$candidaturanet <- gsub("Pàg\\. .*", "", cdllnet$candidaturanet)
+```
+
+##### Neteja municipis
+
+```{r}
+cdllnet$municipinet <- sub(":", "", cdllnet$municipi)
+```
+
+```{r}
+cdllnet$municipinet <- tolower(cdllnet$municipinet)
+```
+
+```{r}
+municipinet <- c()
+
+.simpleCap <- function(x) {
+    s <- strsplit(x, " ")[[1]]
+    paste(toupper(substring(s, 1, 1)), substring(s, 2),
+          sep = "", collapse = " ")
+}
+
+for (i in 1:length(cdllnet$municipinet)) {
+  
+  xmunicipinet <- .simpleCap(cdllnet$municipinet[i])
+  
+  municipinet <- c(municipinet, xmunicipinet)
+}
+
+cdllnet$municipinet <- municipinet
+```
+
+```{r}
+cdllnet$municipinet <- ifelse(cdllnet$municipinet=="NANA", NA, cdllnet$municipinet)
+```
+
+```{r}
+cdllnet$municipi <- gsub("Pàg\\. .*", "", cdllnet$municipi)
+cdllnet$municipi <- gsub("Pàg\\. .*", "", cdllnet$municipi)
+cdllnet$municipinet <- gsub("Pàg\\. .*", "", cdllnet$municipinet)
+```
+
+
+### Creuament amb dades de gènere
+
+Descarregar una base de noms per gènere de l'INE. 
+
+```{r}
+noms <- read.csv2("noms_ine.csv", encoding="UTF-8")
+colnames(noms) <- c("Sexe", "Nom")
+```
+
+```{r}
+noms$Nom <- tolower(noms$Nom)
+```
+
+```{r}
+nomslist <- c()
+
+.simpleCap <- function(x) {
+    s <- strsplit(x, " ")[[1]]
+    paste(toupper(substring(s, 1, 1)), substring(s, 2),
+          sep = "", collapse = " ")
+}
+
+for (i in 1:length(noms$Nom)) {
+  
+  xnom <- .simpleCap(noms$Nom[i])
+  
+  nomslist <- c(nomslist, xnom)
+}
+
+noms$Nom <- nomslist
+```
+
+Crear un vector de noms d'home i dona i classifica com a "Unisex" aquells que apareixen als dos vectors
+```{r}
+dones <- filter(noms, Sexe=="Dona")$Nom
+homes <- filter(noms, Sexe=="Home")$Nom
+
+noms$Sexe <- ifelse(noms$Nom %in% intersect(dones,homes), "Unisex", noms$Sexe)
+
+noms$Sexe <- if_else(noms$Sexe=="1", "Dona", noms$Sexe)
+noms$Sexe <- if_else(noms$Sexe=="2", "Home", noms$Sexe)
+```
+
+Crear en el dataframe una columna només amb els noms de pila
+```{r}
+cdllnet$capdellistanom <- sub(" .*", "", cdllnet$capdellistanet)
+```
+
+Treure els accents i caràcters especials de la columna de noms, perquè encaixin amb la llista de l'INE
+```{r}
+cdllnet$capdellistanom <- iconv(cdllnet$capdellistanom, from="UTF-8", to="ASCII//TRANSLIT")
+```
+
+Assignar gènere a cada nom de pila
+```{r}
+library(dplyr)
+cdllnet <- left_join(cdllnet, noms, by=c("capdellistanom"="Nom"))
+
+cdllnet$Sexe <- as.factor(cdllnet$Sexe)
+```
+
+### Classificació dels partits
+
+```{r}
+cdllnet$candidaturapartit <- ifelse(grepl("Esquerra Republicana", cdllnet$candidaturanet, ignore.case = T), "ERC", ifelse(grepl("Primàries", cdllnet$candidaturanet, ignore.case = T), "Primàries", ifelse(grepl("Socialistes", cdllnet$candidaturanet, ignore.case = T), "PSC", ifelse(grepl("Junts Per Catalunya", cdllnet$candidaturanet, ignore.case = T), "JxCat", ifelse(grepl("En Comú", cdllnet$candidaturanet, ignore.case = T), "ECP", ifelse(grepl("Partido Popular", cdllnet$candidaturanet, ignore.case = T), "PP", ifelse(grepl("Candidatura D'unitat Popular", cdllnet$candidaturanet, ignore.case = T), "CUP", ifelse(grepl("ciutadans", cdllnet$candidaturanet, ignore.case = T), "Cs", ifelse(grepl("ciudadanos", cdllnet$candidaturanet, ignore.case = T), "Cs", ifelse(grepl("Candidatura D'unitat Popular", cdllnet$candidaturanet, ignore.case = T), "CUP", ifelse(grepl("Podemos", cdllnet$candidaturanet, ignore.case = T), "ECP", ifelse(grepl("Podem", cdllnet$candidaturanet, ignore.case = T), "ECP", ifelse(grepl("Vox", cdllnet$candidaturanet, ignore.case = T), "Vox", ifelse(grepl("CUP", cdllnet$candidaturanet, ignore.case = T), "CUP", ifelse(grepl("jxcat", cdllnet$candidaturanet, ignore.case = T), "JxCat", ifelse(grepl("En Comu", cdllnet$candidaturanet, ignore.case = T), "ECP", NA))))))))))))))))
+```
+
+```{r}
+cdllnet$candidaturapartit <- as.factor(cdllnet$candidaturapartit)
+```
+
+```{r}
+cdllnet$candidaturapartit <- ifelse(is.na(cdllnet$candidaturapartit), "Altres", cdllnet$candidaturapartit)
+```
+
+### Creuament amb dades d'habitant
+
+Importar dades d'habitants per municipi de l'Idescat:
+```{r}
+habitants <- read.csv2("habitants_municipis_catalunya.csv", encoding = "UTF-8")
+colnames(habitants)[1] <- "Municipi"
+habitants$Municipi <- tolower(habitants$Municipi)
+```
+
+```{r}
+nomslist <- c()
+
+.simpleCap <- function(x) {
+    s <- strsplit(x, " ")[[1]]
+    paste(toupper(substring(s, 1, 1)), substring(s, 2),
+          sep = "", collapse = " ")
+}
+
+for (i in 1:length(habitants$Municipi)) {
+  
+  xnom <- .simpleCap(habitants$Municipi[i])
+  
+  nomslist <- c(nomslist, xnom)
+}
+
+habitants$Municipi <- nomslist
+```
+
+Netejar columna de municipis
+```{r}
+cdllnet$municipinet <- gsub("\n", "", cdllnet$municipinet)
+cdllnet$municipinet <- gsub("^ ", "", cdllnet$municipinet)
+```
+
+Unir nombre d'habitants a cada municipi
+```{r}
+cdllnet <- left_join(cdllnet, habitants, by=c("municipinet"="Municipi"))
+```
+
+Classificar mides de municipis
+```{r}
+cdllnet$midamuni <- ifelse(is.na(cdllnet$Habitants), NA, ifelse(cdllnet$Habitants<500, "Molt petit", ifelse(cdllnet$Habitants<2000, "Petit", ifelse(cdllnet$Habitants<10000, "Mitjà", ifelse(cdllnet$Habitants<30000, "Gran", "Molt gran")))))
+```
+
+### Resultats
+
+Caps de llista per gènere per partit:
+```{r}
+partitsgenere <- cdllnet %>% group_by(candidaturapartit, Sexe) %>% summarise(n=n())
+```
+
+Caps de llista per gènere per mida del municipi:
+```{r}
+partitsgeneremuni <- cdllnet %>% group_by(candidaturapartit, Sexe, midamuni) %>% summarise(n=n())
+```
+
