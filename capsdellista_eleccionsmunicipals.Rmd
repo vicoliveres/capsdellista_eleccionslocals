@@ -109,7 +109,7 @@ for (i in 1:length(zoneslld)) {
 
 Però no tot es pot automatitzar al 100%. 
 
-En el cas de la província de lleida, moltes pàgines tenen dues columnes, cosa que barreja el text que s'emmagatema per línies. L'opció que m'ha fet perdre menys temps ha sigut revisar aquests casos de manera externa i entrar els noms de les candidatures i candidats de manera manual.
+En el cas de la província de Girona, moltes pàgines tenen dues columnes, cosa que barreja el text que s'emmagatema per línies. L'opció que m'ha fet perdre menys temps ha sigut revisar aquests casos de manera externa i entrar els noms de les candidatures i candidats de manera manual.
 
 També ha sigut manual el cas del Vendrell, ja que no aareixia el text "Circumscripció electoral" davant del no de cada municipi.
 
